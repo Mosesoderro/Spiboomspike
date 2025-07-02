@@ -1,11 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Boom 1000 Tracker</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SpyBoomSpike - Boom 1000 Live</title>
+
+  <!-- Lightweight Charts -->
   <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-  <link rel="stylesheet" href="css/style.css">
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="app-header">
@@ -13,18 +17,104 @@
     <div id="connection-status" class="live-badge">Connecting...</div>
   </header>
 
-  <div id="chart" class="chart-container"></div>
+  <!-- Chart -->
+  <div id="chart" class="chart-container" style="height: 300px; width: 100%;"></div>
 
-  <div class="alerts-feed">
+  <!-- Alerts -->
+  <section class="alerts-feed">
     <h2>🔔 Spike Alerts</h2>
     <div id="alerts-container"></div>
-  </div>
+  </section>
 
-  <div class="debug-console">
-    <h3>Debug Log</h3>
-    <pre id="debug-log"></pre>
-  </div>
+  <!-- Debug Console -->
+  <section class="debug-console">
+    <h3>🧪 Debug Log</h3>
+    <pre id="debug-log" style="background: #111; color: #0f0; padding: 10px; overflow-y: scroll; max-height: 150px;"></pre>
+  </section>
 
-  <script src="js/app.js"></script>
+  <!-- JavaScript -->
+  <script>
+    // Chart setup
+    const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+      width: window.innerWidth,
+      height: 300,
+      layout: {
+        background: { color: '#1e1e2f' },
+        textColor: '#d9d9d9'
+      },
+      grid: {
+        vertLines: { color: '#2A2A3A' },
+        horzLines: { color: '#2A2A3A' }
+      }
+    });
+    const candleSeries = chart.addCandlestickSeries();
+
+    // WebSocket connection
+    const ws = new WebSocket('wss://ws.binaryws.com/websockets/v3?app_id=1089');
+
+    // Debug log
+    function log(msg) {
+      const logBox = document.getElementById('debug-log');
+      logBox.textContent += `${new Date().toLocaleTimeString()}: ${msg}\n`;
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    // Update chart
+    function updateChart(tick) {
+      candleSeries.update({
+        time: Math.floor(Date.now() / 1000),
+        open: tick.open,
+        high: tick.high,
+        low: tick.low,
+        close: tick.quote
+      });
+    }
+
+    // Spike detection
+    function checkSpike(tick) {
+      const move = tick.quote - tick.open;
+      if (Math.abs(move) >= 150) {
+        const alertBox = document.createElement('div');
+        alertBox.className = `alert ${move > 0 ? 'bull' : 'bear'}`;
+        alertBox.innerHTML = `
+          ${move > 0 ? '📈 Bull' : '📉 Bear'} spike: ${Math.abs(move).toFixed(2)} pts @ ${tick.quote}
+          <br/><small>${new Date().toLocaleTimeString()}</small>
+        `;
+        document.getElementById('alerts-container').prepend(alertBox);
+        log(`Spike detected: ${move.toFixed(2)} points`);
+      }
+    }
+
+    // On WebSocket open
+    ws.onopen = () => {
+      log('WebSocket connected.');
+      document.getElementById('connection-status').textContent = 'CONNECTED';
+      document.getElementById('connection-status').style.background = '#4CAF50';
+
+      // Subscribe to Boom 1000 Index ticks
+      ws.send(JSON.stringify({
+        ticks: 'boom1000',
+        subscribe: 1
+      }));
+    };
+
+    // On receiving data
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      log('Tick received');
+
+      if (data.tick) {
+        updateChart(data.tick);
+        checkSpike(data.tick);
+      }
+    };
+
+    // On WebSocket error
+    ws.onerror = (error) => {
+      log('WebSocket error');
+      document.getElementById('connection-status').textContent = 'DISCONNECTED';
+      document.getElementById('connection-status').style.background = '#F44336';
+    };
+  </script>
 </body>
 </html>
